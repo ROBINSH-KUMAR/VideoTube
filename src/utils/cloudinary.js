@@ -17,30 +17,19 @@ const uploadOnCloudinary = async (localFilePath) => {
     });
     //file has been uploaded successfull
     console.log("file is uploaded on successfull", response.url);
+    if (fs.existsSync(localFilePath)) {
+      fs.unlinkSync(localFilePath);
+    }
     return response;
   } catch (error) {
-    fs.unlinkSync(localFilePath);
+    console.log("Cloudinary upload error:", error);
+
+    if (localFilePath && fs.existsSync(localFilePath)) {
+      fs.unlinkSync(localFilePath);
+    }
+
     return null;
   }
 };
 
 export default uploadOnCloudinary;
-
-
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
