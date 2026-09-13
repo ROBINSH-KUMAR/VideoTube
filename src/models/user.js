@@ -42,6 +42,12 @@ const userSchema = new Schema(
         ref: "Video",
       },
     ],
+    likedVideo:[
+      {
+        type: Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
     refreshToken: {
       type: String,
     },

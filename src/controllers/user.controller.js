@@ -6,6 +6,7 @@ import { Video } from "../models/video.js";
 import uploadOnCloudinary from "../utils/cloudinary.js";
 import { options } from "../constants.js";
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 
 const generateAccessAndRefreshToken = async (userId) => {
   try {
@@ -22,6 +23,8 @@ const generateAccessAndRefreshToken = async (userId) => {
     );
   }
 };
+
+// Authentication Controllers
 
 export const registerUser = asyncHandler(async (req, res) => {
   const { userName, fullName, email, password } = req.body;
@@ -71,50 +74,6 @@ export const registerUser = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, cretedUser, "user registered successfully"));
 });
 
-export const publishVideo = asyncHandler(async (req, res) => {
-  const { title, description } = req.body;
-
-  if (!title || !description) {
-    throw new ApiError(400, "Title and description are required");
-  }
-
-  const videoFileLocalPath = req.files?.video?.[0]?.path;
-  const thumbnailLocalPath = req.files?.thumbnail?.[0]?.path;
-
-  if (!videoFileLocalPath) {
-    throw new ApiError(400, "Video file is required");
-  }
-
-  if (!thumbnailLocalPath) {
-    throw new ApiError(400, "Thumbnail is required");
-  }
-
-  const videoFile = await uploadOnCloudinary(videoFileLocalPath);
-
-  if (!videoFile) {
-    throw new ApiError(500, "Video upload failed");
-  }
-
-  const thumbnail = await uploadOnCloudinary(thumbnailLocalPath);
-
-  if (!thumbnail) {
-    throw new ApiError(500, "Thumbnail upload failed");
-  }
-
-  const video = await Video.create({
-    videoFile: videoFile.url,
-    thumbnail: thumbnail.url,
-    title,
-    description,
-    duration: videoFile.duration,
-    owner: req.user._id,
-  });
-
-  return res
-    .status(201)
-    .json(new ApiResponse(201, video, "Video published successfully"));
-});
-
 export const loginUser = asyncHandler(async (req, res) => {
   const { email, userName, password } = req.body;
   if (!userName && !email) {
@@ -123,6 +82,10 @@ export const loginUser = asyncHandler(async (req, res) => {
   const user = await User.findOne({
     $or: [{ userName }, { email }],
   });
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
 
   const isPasswordValid = await user.isPasswordCorrect(password);
   if (!isPasswordValid) {
@@ -216,6 +179,129 @@ export const refreshAccessToken = asyncHandler(async (req, res) => {
   }
 });
 
+// video Controllers
+
+export const publishVideo = asyncHandler(async (req, res) => {
+  const { title, description } = req.body;
+
+  if (!title || !description) {
+    throw new ApiError(400, "Title and description are required");
+  }
+
+  const videoFileLocalPath = req.files?.video?.[0]?.path;
+  const thumbnailLocalPath = req.files?.thumbnail?.[0]?.path;
+
+  if (!videoFileLocalPath) {
+    throw new ApiError(400, "Video file is required");
+  }
+
+  if (!thumbnailLocalPath) {
+    throw new ApiError(400, "Thumbnail is required");
+  }
+
+  const videoFile = await uploadOnCloudinary(videoFileLocalPath);
+
+  if (!videoFile) {
+    throw new ApiError(500, "Video upload failed");
+  }
+
+  const thumbnail = await uploadOnCloudinary(thumbnailLocalPath);
+
+  if (!thumbnail) {
+    throw new ApiError(500, "Thumbnail upload failed");
+  }
+
+  const video = await Video.create({
+    videoFile: videoFile.url,
+    thumbnail: thumbnail.url,
+    title,
+    description,
+    duration: videoFile.duration,
+    owner: req.user._id,
+  });
+
+  return res
+    .status(201)
+    .json(new ApiResponse(201, video, "Video published successfully"));
+});
+
+export const togglePublishStatus = asyncHandler(async (req, res) => {
+  const { videoId } = req.params;
+
+  const video = await Video.findById(videoId);
+
+  if (!video) {
+    throw new ApiError(404, "Video not found");
+  }
+
+  if (video.owner.toString() !== req.user._id.toString()) {
+    throw new ApiError(403, "You are not the owner of this video");
+  }
+
+  video.isPublished = !video.isPublished;
+
+  await video.save({ validateBeforeSave: false });
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        isPublished: video.isPublished,
+      },
+      video.isPublished
+        ? "Video published successfully"
+        : "Video unpublished successfully"
+    )
+  );
+});
+
+export const getAllVideos = asyncHandler(async (req, res) => {
+  const skip = Math.max(Number(req.query.skip) || 0, 0);
+
+  const requestedLimit = Number(req.query.limit) || 40;
+  const limit = Math.min(Math.max(requestedLimit, 1), 40);
+  const videos = await Video.find()
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit)
+    .populate("owner", "fullName userName avatar");
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        { videos, hasMore: videos.length === limit },
+        "All videos fetched successfully",
+      ),
+    );
+});
+
+export const incrementVideoViews = asyncHandler(async (req, res) => {
+  const { videoId } = req.params;
+
+  const video = await Video.findByIdAndUpdate(
+    videoId,
+    { $inc: { views: 1 } },
+    { new: true },
+  );
+
+  if (!video) {
+    throw new ApiError(404, "Video not found");
+  }
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        { views: video.views },
+        "Video views updated successfully",
+      ),
+    );
+});
+
+// Account Controllers
+
 export const changeCurrentPassword = asyncHandler(async (req, res) => {
   const { oldPassword, newPassword } = req.body;
   const user = await User.findById(req.user?._id);
@@ -298,6 +384,8 @@ export const updateUserCoverImage = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, user, "coverImage updated successfully"));
 });
 
+// Channel Controllers
+
 export const getUserChannelProfile = asyncHandler(async (req, res) => {
   const { username } = req.params;
 
@@ -371,24 +459,238 @@ export const getUserChannelProfile = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, channel[0], "user channel fetch successfully"));
 });
 
-export const getAllVideos = asyncHandler(async (req, res) => {
-  const skip = Math.max(Number(req.query.skip) || 0, 0);
+// Watch History Controllers
 
-  const requestedLimit = Number(req.query.limit) || 40;
-  const limit = Math.min(Math.max(requestedLimit, 1), 40);
-  const videos = await Video.find()
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(limit)
-    .populate("owner", "fullName userName avatar");
+export const addToWatchHistory = asyncHandler(async (req, res) => {
+  const { videoId } = req.params;
+
+  const video = await Video.findById(videoId);
+
+  if (!video) {
+    throw new ApiError(404, "Video not found");
+  }
+
+  await User.findByIdAndUpdate(req.user._id, [
+    {
+      $set: {
+        watchHistory: {
+          $concatArrays: [
+            [video._id],
+            {
+              $filter: {
+                input: "$watchHistory",
+                as: "video",
+                cond: {
+                  $ne: ["$$video", video._id],
+                },
+              },
+            },
+          ],
+        },
+      },
+    },
+  ]);
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "Video added to watch history"));
+});
+
+export const getWatchHistory = asyncHandler(async (req, res) => {
+  const user = await User.aggregate([
+    {
+      $match: {
+        _id: new mongoose.Types.ObjectId(req.user._id),
+      },
+    },
+    {
+      $lookup: {
+        from: "videos",
+        localField: "watchHistory",
+        foreignField: "_id",
+        as: "watchHistory",
+        pipeline: [
+          {
+            $lookup: {
+              from: "users",
+              localField: "owner",
+              foreignField: "_id",
+              as: "owner",
+              pipeline: [
+                {
+                  $project: {
+                    fullName: 1,
+                    userName: 1,
+                    avatar: 1,
+                  },
+                },
+              ],
+            },
+          },
+          {
+            $addFields: {
+              owner: {
+                $first: "$owner",
+              },
+            },
+          },
+        ],
+      },
+    },
+  ]);
   return res
     .status(200)
     .json(
       new ApiResponse(
         200,
-        { videos, hasMore: videos.length === limit },
-        "All videos fetched successfully",
+        { watchHistory: user[0]?.watchHistory || [] },
+        "Watch history fetched successfully",
       ),
     );
 });
 
+export const removeFromWatchHistory = asyncHandler(async (req, res) => {
+  const { videoId } = req.params;
+
+  await User.findByIdAndUpdate(
+    req.user._id,
+    {
+      $pull: {
+        watchHistory: videoId,
+      },
+    }
+  );
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {},
+      "Video removed from watch history"
+    )
+  );
+});
+
+export const clearWatchHistory = asyncHandler(async (req, res) => {
+  await User.findByIdAndUpdate(
+    req.user._id,
+    {
+      $set: {
+        watchHistory: [],
+      },
+    }
+  );
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {},
+      "Watch history cleared successfully"
+    )
+  );
+});
+
+// Like/Unlike Video Controllers
+
+export const likeVideo = asyncHandler(async (req, res) => {
+  const { videoId } = req.params;
+
+  const session = await mongoose.startSession();
+
+  try {
+    session.startTransaction();
+
+    const video = await Video.findById(videoId).session(session);
+
+    if (!video) {
+      throw new ApiError(404, "Video not found");
+    }
+
+    const user = await User.findById(req.user._id).session(session);
+
+    if (!user) {
+      throw new ApiError(404, "User not found");
+    }
+
+    const alreadyLiked = user.likedVideos.some(
+      (id) => id.toString() === videoId
+    );
+
+    if (alreadyLiked) {
+      throw new ApiError(400, "Video already liked");
+    }
+
+    user.likedVideos.push(video._id);
+    video.likes += 1;
+
+    await user.save({ session });
+    await video.save({ session });
+
+    await session.commitTransaction();
+
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          likes: video.likes,
+          isLiked: true,
+        },
+        "Video liked successfully"
+      )
+    );
+  } catch (error) {
+    await session.abortTransaction();
+    throw error;
+  } finally {
+    await session.endSession();
+  }
+});
+
+export const unlikeVideo = asyncHandler(async (req, res) => {
+  const { videoId } = req.params;
+
+  const session = await mongoose.startSession();
+
+  try {
+    session.startTransaction();
+
+    const video = await Video.findById(videoId).session(session);
+
+    if (!video) {
+      throw new ApiError(404, "Video not found");
+    }
+
+    const user = await User.findById(req.user._id).session(session);
+
+    const alreadyLiked = user.likedVideos.some(
+      (id) => id.toString() === videoId
+    );
+
+    if (!alreadyLiked) {
+      throw new ApiError(400, "Video is not liked");
+    }
+
+    user.likedVideos.pull(video._id);
+    await user.save({ session });
+
+    video.likes = Math.max(video.likes - 1, 0);
+    await video.save({ session });
+
+    await session.commitTransaction();
+
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          likes: video.likes,
+          isLiked: false,
+        },
+        "Video unliked successfully"
+      )
+    );
+  } catch (error) {
+    await session.abortTransaction();
+    throw error;
+  } finally {
+    await session.endSession();
+  }
+});

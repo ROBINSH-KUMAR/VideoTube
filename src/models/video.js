@@ -27,6 +27,12 @@ const videoSchema = Schema(
       type: Number,
       default: 0
     },
+    like:[
+      {
+        type: Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
     isPublished:{
       type: Boolean,
       default: true

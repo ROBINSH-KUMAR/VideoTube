@@ -1,40 +1,165 @@
 import { Router } from "express";
-import { registerUser,loginUser,logoutUser, refreshAccessToken,publishVideo } from "../controllers/user.controller.js";
-import {upload} from "../middlewares/multer.js"
+import {
+  //auth
+  registerUser,
+  loginUser,
+  logoutUser,
+  refreshAccessToken,
+  //video
+  publishVideo,
+  togglePublishStatus,
+  getAllVideos,
+  incrementVideoViews,
+  //user
+  changeCurrentPassword,
+  getCurrentUser,
+  updateAccountDetails,
+  updateUserAvatar,
+  updateUserCoverImage,
+  //channel
+  getUserChannelProfile,
+  //watch history
+  addToWatchHistory,
+  getWatchHistory,
+  removeFromWatchHistory,
+  clearWatchHistory,
+  //likes
+  likeVideo,
+  unlikeVideo,
+} from "../controllers/user.controller.js";
+import { upload } from "../middlewares/multer.js";
 import { verifyJWT } from "../middlewares/authentication.middlewares.js";
 
 const router = Router();
 
-router.route('/register').post(upload.fields([
-  {
-    name: 'avatar',
-    maxCount:1
-  },
+// ====================
+// Authentication
+// ====================
+router.route("/register").post(
+  upload.fields([
     {
-    name: 'coverImage',
-    maxCount:1
-  }
-]),registerUser)
-
-
-
-router.route('/login').post(loginUser)
-
-//secured routes
-router.route('/publish-video').post(upload.fields([
-  {
-    name: 'video',
-    maxCount:1
-  },
+      name: "avatar",
+      maxCount: 1,
+    },
     {
-    name: 'thumbnail',
-    maxCount:1
-  }
-]),verifyJWT,publishVideo)
-router.route('/logout').post(verifyJWT,logoutUser)
-router.route("/refresh-token").post(refreshAccessToken)
+      name: "coverImage",
+      maxCount: 1,
+    },
+  ]),
+  registerUser,
+);
+
+router.route("/refresh-token").post(refreshAccessToken);
+
+router.route("/logout").post(verifyJWT, logoutUser);
+
+router.route("/login").post(loginUser);
+
+// ====================
+// Account && secured routes
+// ====================
+
+router.route("/change-password").patch(
+  verifyJWT,
+  changeCurrentPassword
+);  
+
+router.route("/current-user").get(
+  verifyJWT,
+  getCurrentUser
+);
+
+router.route("/update-account").patch(
+  verifyJWT,
+  updateAccountDetails
+);
+
+router.route("/avatar").patch(
+  verifyJWT,
+  upload.single("avatar"),
+  updateUserAvatar
+);
+
+router.route("/cover-image").patch(
+  verifyJWT,
+  upload.single("coverImage"),
+  updateUserCoverImage
+);
+
+// ====================
+// Channel
+// ====================
+router.route("/channel/:username").get(
+  verifyJWT,
+  getUserChannelProfile
+);
+
+// ====================
+// Videos
+// ====================
+
+router.route("/videos").get(
+  getAllVideos
+);
+
+router.route("/publish-video").post(
+  upload.fields([
+    {
+      name: "video",
+      maxCount: 1,
+    },
+    {
+      name: "thumbnail",
+      maxCount: 1,
+    },
+  ]),
+  verifyJWT,
+  publishVideo,
+);
+
+router.route("/videos/:videoId/publish").patch(
+  verifyJWT,
+  togglePublishStatus
+);
+
+router.route("/videos/:videoId/view").patch(
+  verifyJWT,
+  incrementVideoViews
+);
 
 
+// ====================
+// Watch History
+// ====================
+
+router.route("/watch-history").get(
+  verifyJWT,
+  getWatchHistory
+);
+
+router.route("/watch-history/:videoId").post(
+  verifyJWT,
+  addToWatchHistory
+);
+
+router.route("/watch-history/:videoId").delete(
+  verifyJWT,
+  removeFromWatchHistory
+);
+
+router.route("/watch-history").delete(
+  verifyJWT,
+  clearWatchHistory
+);
+
+
+// ====================
+// Likes
+// ====================
+
+router.route("/videos/:videoId/like")
+  .post(verifyJWT, likeVideo)
+  .delete(verifyJWT, unlikeVideo);
 
 
 
