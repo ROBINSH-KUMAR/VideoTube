@@ -279,6 +279,10 @@ export const getAllVideos = asyncHandler(async (req, res) => {
 export const incrementVideoViews = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
 
+  if (!mongoose.isValidObjectId(videoId)) {
+    throw new ApiError(400, "Invalid video ID");
+}
+
   const video = await Video.findByIdAndUpdate(
     videoId,
     { $inc: { views: 1 } },
@@ -464,6 +468,10 @@ export const getUserChannelProfile = asyncHandler(async (req, res) => {
 export const addToWatchHistory = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
 
+  if (!mongoose.isValidObjectId(videoId)) {
+    throw new ApiError(400, "Invalid video ID");
+}
+
   const video = await Video.findById(videoId);
 
   if (!video) {
@@ -497,6 +505,7 @@ export const addToWatchHistory = asyncHandler(async (req, res) => {
 });
 
 export const getWatchHistory = asyncHandler(async (req, res) => {
+
   const user = await User.aggregate([
     {
       $match: {
@@ -551,6 +560,10 @@ export const getWatchHistory = asyncHandler(async (req, res) => {
 
 export const removeFromWatchHistory = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
+
+  if (!mongoose.isValidObjectId(videoId)) {
+    throw new ApiError(400, "Invalid video ID");
+}
 
   await User.findByIdAndUpdate(
     req.user._id,

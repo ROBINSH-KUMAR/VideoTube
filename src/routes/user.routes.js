@@ -1,4 +1,5 @@
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
 import {
   //auth
   registerUser,
@@ -32,6 +33,16 @@ import { verifyJWT } from "../middlewares/authentication.middlewares.js";
 
 const router = Router();
 
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,                  // maximum 10 attempts
+  message: {
+    success: false,
+    message: "Too many login attempts. Please try again later.",
+  },
+});
+
+
 // ====================
 // Authentication
 // ====================
@@ -53,7 +64,7 @@ router.route("/refresh-token").post(refreshAccessToken);
 
 router.route("/logout").post(verifyJWT, logoutUser);
 
-router.route("/login").post(loginUser);
+router.route("/login").post(loginLimiter, loginUser);
 
 // ====================
 // Account && secured routes
