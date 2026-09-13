@@ -2,7 +2,7 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/apiResponse.js";
 import { User } from "../models/user.js";
-import { Video} from "../models/video.js"
+import { Video } from "../models/video.js";
 import uploadOnCloudinary from "../utils/cloudinary.js";
 import { options } from "../constants.js";
 import jwt from "jsonwebtoken";
@@ -89,7 +89,6 @@ export const publishVideo = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Thumbnail is required");
   }
 
-
   const videoFile = await uploadOnCloudinary(videoFileLocalPath);
 
   if (!videoFile) {
@@ -113,13 +112,7 @@ export const publishVideo = asyncHandler(async (req, res) => {
 
   return res
     .status(201)
-    .json(
-      new ApiResponse(
-        201,
-        video,
-        "Video published successfully"
-      )
-    );
+    .json(new ApiResponse(201, video, "Video published successfully"));
 });
 
 export const loginUser = asyncHandler(async (req, res) => {
@@ -222,3 +215,180 @@ export const refreshAccessToken = asyncHandler(async (req, res) => {
     throw new ApiError(401, error?.message || "Invalid refreshToken");
   }
 });
+
+export const changeCurrentPassword = asyncHandler(async (req, res) => {
+  const { oldPassword, newPassword } = req.body;
+  const user = await User.findById(req.user?._id);
+  const isPasswordCorrect = await user.isPasswordCorrect(oldPassword);
+  if (!isPasswordCorrect) {
+    throw new ApiError(400, "Invalid old password");
+  }
+  user.password = newPassword;
+  await user.save({ validateBeforeSave: false });
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "Password changed successfully"));
+});
+
+export const getCurrentUser = asyncHandler(async (req, res) => {
+  return res
+    .status(200)
+    .json(new ApiResponse(200, req.user, "currnet user fetched successfully"));
+});
+
+export const updateAccountDetails = asyncHandler(async (req, res) => {
+  const { fullName, email } = req.body;
+  if (!fullName || !email) {
+    throw new ApiError(400, "All fileds are requiered");
+  }
+  const user = await User.findByIdAndUpdate(
+    req.user?._id,
+    { $set: { fullName, email } },
+    { new: true },
+  ).select("-password");
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, user, "Account details updated successfully"));
+});
+
+export const updateUserAvatar = asyncHandler(async (req, res) => {
+  const avatarLocalFilePath = req.file?.path;
+  if (!avatarLocalFilePath) {
+    throw new ApiError(400, "Avatar file is missing");
+  }
+
+  const avatar = await uploadOnCloudinary(avatarLocalFilePath);
+
+  if (!avatar.url) {
+    throw new ApiError(500, "Avatar file is missing");
+  }
+
+  const user = await User.findByIdAndUpdate(
+    req.user._id,
+    { $set: { avatar: avatar.url } },
+    { new: true },
+  ).select("-password");
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, user, "AvatarImage updated successfully"));
+});
+
+export const updateUserCoverImage = asyncHandler(async (req, res) => {
+  const coverImageLocalFilePath = req.file?.path;
+  if (!coverImageLocalFilePath) {
+    throw new ApiError(400, "coverImagee file is missing");
+  }
+
+  const coverImage = await uploadOnCloudinary(coverImageLocalFilePath);
+
+  if (!coverImage.url) {
+    throw new ApiError(500, "coverImage file is missing");
+  }
+
+  const user = await User.findByIdAndUpdate(
+    req.user._id,
+    { $set: { coverImage: coverImage.url } },
+    { new: true },
+  ).select("-password");
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, user, "coverImage updated successfully"));
+});
+
+export const getUserChannelProfile = asyncHandler(async (req, res) => {
+  const { username } = req.params;
+
+  if (!username?.trim()) {
+    throw new ApiError(400, "username is missing");
+  }
+
+  const channel = await User.aggregate([
+    {
+      $match: {
+        userName: username?.toLowerCase(),
+      },
+    },
+    {
+      $lookup: {
+        from: "subscriptions",
+        localField: "_id",
+        foreignField: "channel",
+        as: "subscribers",
+      },
+    },
+    {
+      $lookup: {
+        from: "subscriptions",
+        localField: "_id",
+        foreignField: "subscriber",
+        as: "subscribedTo",
+      },
+    },
+    // Get videos owned by this user
+    {
+      $lookup: {
+        from: "videos",
+        localField: "_id",
+        foreignField: "owner",
+        as: "videos",
+      },
+    },
+    {
+      $addFields: {
+        subscribersCount: { $size: "$subscribers" },
+        subscribedToCount: { $size: "$subscribedTo" },
+        isSubscribed: {
+          $cond: {
+            if: { $in: [req.user?._id, "$subscribers.subscriber"] },
+            then: true,
+            else: false,
+          },
+        },
+      },
+    },
+    {
+      $project: {
+        fullName: 1,
+        userName: 1,
+        subscribersCount: 1,
+        subscribedToCount: 1,
+        isSubscribed: 1,
+        coverImage: 1,
+        avatar: 1,
+        email: 1,
+        videos: 1,
+      },
+    },
+  ]);
+  if (!channel?.length) {
+    throw new ApiError(404, "channel does not exists");
+  }
+  return res
+    .status(200)
+    .json(new ApiResponse(200, channel[0], "user channel fetch successfully"));
+});
+
+export const getAllVideos = asyncHandler(async (req, res) => {
+  const skip = Math.max(Number(req.query.skip) || 0, 0);
+
+  const requestedLimit = Number(req.query.limit) || 40;
+  const limit = Math.min(Math.max(requestedLimit, 1), 40);
+  const videos = await Video.find()
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit)
+    .populate("owner", "fullName userName avatar");
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        { videos, hasMore: videos.length === limit },
+        "All videos fetched successfully",
+      ),
+    );
+});
+
