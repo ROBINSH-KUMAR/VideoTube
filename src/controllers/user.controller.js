@@ -170,7 +170,7 @@ export const refreshAccessToken = asyncHandler(async (req, res) => {
       .json(
         new ApiResponse(
           200,
-          { accessToken, refreshToken: newRefreshToken },
+          { accessToken, refreshToken },
           "Access token refreshed successfully",
         ),
       );
@@ -250,8 +250,8 @@ export const togglePublishStatus = asyncHandler(async (req, res) => {
       },
       video.isPublished
         ? "Video published successfully"
-        : "Video unpublished successfully"
-    )
+        : "Video unpublished successfully",
+    ),
   );
 });
 
@@ -260,7 +260,7 @@ export const getAllVideos = asyncHandler(async (req, res) => {
 
   const requestedLimit = Number(req.query.limit) || 40;
   const limit = Math.min(Math.max(requestedLimit, 1), 40);
-  const videos = await Video.find()
+  const videos = await Video.find({ isPublished: true })
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limit)
@@ -281,7 +281,7 @@ export const incrementVideoViews = asyncHandler(async (req, res) => {
 
   if (!mongoose.isValidObjectId(videoId)) {
     throw new ApiError(400, "Invalid video ID");
-}
+  }
 
   const video = await Video.findByIdAndUpdate(
     videoId,
@@ -321,9 +321,24 @@ export const changeCurrentPassword = asyncHandler(async (req, res) => {
 });
 
 export const getCurrentUser = asyncHandler(async (req, res) => {
+  const user = await User.aggregate([
+    {
+      $match: {
+        _id: new mongoose.Types.ObjectId(req.user._id),
+      },
+    },
+    {
+      $lookup: {
+        from: "videos",
+        localField: "_id",
+        foreignField: "owner",
+        as: "videos",
+      },
+    },
+  ]);
   return res
     .status(200)
-    .json(new ApiResponse(200, req.user, "currnet user fetched successfully"));
+    .json(new ApiResponse(200, user[0], "currnet user fetched successfully"));
 });
 
 export const updateAccountDetails = asyncHandler(async (req, res) => {
@@ -470,7 +485,7 @@ export const addToWatchHistory = asyncHandler(async (req, res) => {
 
   if (!mongoose.isValidObjectId(videoId)) {
     throw new ApiError(400, "Invalid video ID");
-}
+  }
 
   const video = await Video.findById(videoId);
 
@@ -478,26 +493,44 @@ export const addToWatchHistory = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Video not found");
   }
 
-  await User.findByIdAndUpdate(req.user._id, [
-    {
-      $set: {
-        watchHistory: {
-          $concatArrays: [
-            [video._id],
-            {
-              $filter: {
-                input: "$watchHistory",
-                as: "video",
-                cond: {
-                  $ne: ["$$video", video._id],
+  await User.findByIdAndUpdate(
+    req.user._id,
+    [
+      {
+        $set: {
+          watchHistory: {
+            $concatArrays: [
+              [video._id],
+              {
+                $filter: {
+                  input: "$watchHistory",
+                  as: "video",
+                  cond: {
+                    $ne: ["$$video", video._id],
+                  },
                 },
               },
-            },
-          ],
+            ],
+          },
         },
       },
-    },
-  ]);
+    ],
+    { updatePipeline: true },
+  );
+  // await User.findByIdAndUpdate(req.user._id, {
+  //   $pull: {
+  //     watchHistory: video._id
+  //   }
+  // });
+
+  // await User.findByIdAndUpdate(req.user._id, {
+  //   $push: {
+  //     watchHistory: {
+  //       $each: [video._id],
+  //       $position: 0
+  //     }
+  //   }
+  // });
 
   return res
     .status(200)
@@ -505,7 +538,6 @@ export const addToWatchHistory = asyncHandler(async (req, res) => {
 });
 
 export const getWatchHistory = asyncHandler(async (req, res) => {
-
   const user = await User.aggregate([
     {
       $match: {
@@ -563,43 +595,29 @@ export const removeFromWatchHistory = asyncHandler(async (req, res) => {
 
   if (!mongoose.isValidObjectId(videoId)) {
     throw new ApiError(400, "Invalid video ID");
-}
+  }
 
-  await User.findByIdAndUpdate(
-    req.user._id,
-    {
-      $pull: {
-        watchHistory: videoId,
-      },
-    }
-  );
+  await User.findByIdAndUpdate(req.user._id, {
+    $pull: {
+      watchHistory: videoId,
+    },
+  });
 
-  return res.status(200).json(
-    new ApiResponse(
-      200,
-      {},
-      "Video removed from watch history"
-    )
-  );
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "Video removed from watch history"));
 });
 
 export const clearWatchHistory = asyncHandler(async (req, res) => {
-  await User.findByIdAndUpdate(
-    req.user._id,
-    {
-      $set: {
-        watchHistory: [],
-      },
-    }
-  );
+  await User.findByIdAndUpdate(req.user._id, {
+    $set: {
+      watchHistory: [],
+    },
+  });
 
-  return res.status(200).json(
-    new ApiResponse(
-      200,
-      {},
-      "Watch history cleared successfully"
-    )
-  );
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "Watch history cleared successfully"));
 });
 
 // Like/Unlike Video Controllers
@@ -625,7 +643,7 @@ export const likeVideo = asyncHandler(async (req, res) => {
     }
 
     const alreadyLiked = user.likedVideos.some(
-      (id) => id.toString() === videoId
+      (id) => id.toString() === videoId,
     );
 
     if (alreadyLiked) {
@@ -647,8 +665,8 @@ export const likeVideo = asyncHandler(async (req, res) => {
           likes: video.likes,
           isLiked: true,
         },
-        "Video liked successfully"
-      )
+        "Video liked successfully",
+      ),
     );
   } catch (error) {
     await session.abortTransaction();
@@ -675,7 +693,7 @@ export const unlikeVideo = asyncHandler(async (req, res) => {
     const user = await User.findById(req.user._id).session(session);
 
     const alreadyLiked = user.likedVideos.some(
-      (id) => id.toString() === videoId
+      (id) => id.toString() === videoId,
     );
 
     if (!alreadyLiked) {
@@ -697,8 +715,8 @@ export const unlikeVideo = asyncHandler(async (req, res) => {
           likes: video.likes,
           isLiked: false,
         },
-        "Video unliked successfully"
-      )
+        "Video unliked successfully",
+      ),
     );
   } catch (error) {
     await session.abortTransaction();

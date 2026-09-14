@@ -42,7 +42,7 @@ const userSchema = new Schema(
         ref: "Video",
       },
     ],
-    likedVideo:[
+    likedVideos:[
       {
         type: Schema.Types.ObjectId,
         ref: "User",
