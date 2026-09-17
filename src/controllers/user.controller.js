@@ -3,6 +3,7 @@ import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/apiResponse.js";
 import { User } from "../models/user.js";
 import { Video } from "../models/video.js";
+import { Subscription } from "../models/subscription.model.js";
 import uploadOnCloudinary from "../utils/cloudinary.js";
 import { options } from "../constants.js";
 import jwt from "jsonwebtoken";
@@ -138,7 +139,7 @@ export const logoutUser = asyncHandler(async (req, res) => {
 });
 
 export const refreshAccessToken = asyncHandler(async (req, res) => {
-  const incomingRefreshToken = req.cookie.refreshToken || req.body.refreshToken;
+  const incomingRefreshToken = req.cookie?.refreshToken || req.body?.refreshToken;
 
   if (!incomingRefreshToken) {
     throw new ApiError(401, "Unauthorized request");
@@ -406,16 +407,17 @@ export const updateUserCoverImage = asyncHandler(async (req, res) => {
 // Channel Controllers
 
 export const getUserChannelProfile = asyncHandler(async (req, res) => {
-  const { username } = req.params;
+ const { ownerId } = req.params;
 
-  if (!username?.trim()) {
-    throw new ApiError(400, "username is missing");
-  }
+    if (!ownerId) {
+        throw new ApiError(400, "Owner ID is missing");
+    }
+
 
   const channel = await User.aggregate([
     {
       $match: {
-        userName: username?.toLowerCase(),
+        _id: new mongoose.Types.ObjectId(ownerId),
       },
     },
     {
@@ -724,4 +726,189 @@ export const unlikeVideo = asyncHandler(async (req, res) => {
   } finally {
     await session.endSession();
   }
+});
+
+//Subcription Controllers
+
+export const toggleSubscription = asyncHandler(async (req, res) => {
+    const subscriber = req.user._id;
+    const { videoId, ownerId } = req.params;
+
+    let channel;
+
+    // If video ID is provided
+    if (videoId) {
+        if (!mongoose.isValidObjectId(videoId)) {
+            throw new ApiError(400, "Invalid video ID");
+        }
+
+        const video = await Video.findById(videoId).select("owner");
+
+        if (!video) {
+            throw new ApiError(404, "Video not found");
+        }
+
+        channel = video.owner;
+    }
+
+    // Otherwise use owner ID
+    else if (ownerId) {
+        if (!mongoose.isValidObjectId(ownerId)) {
+            throw new ApiError(400, "Invalid owner ID");
+        }
+
+        channel = ownerId;
+    }
+
+    else {
+        throw new ApiError(
+            400,
+            "Video ID or Owner ID is required"
+        );
+    }
+
+    // Cannot subscribe to yourself
+    if (subscriber.toString() === channel.toString()) {
+        throw new ApiError(
+            400,
+            "You cannot subscribe to your own channel"
+        );
+    }
+
+    // Find subscription
+    const existingSubscription = await Subscription.findOne({
+        subscriber,
+        channel,
+    });
+
+    if (existingSubscription) {
+        // Delete subscription
+        await Subscription.findByIdAndDelete(
+            existingSubscription._id
+        );
+
+        return res.status(200).json(
+            new ApiResponse(
+                200,
+                {
+                    subscribed: false,
+                },
+                "Unsubscribed successfully"
+            )
+        );
+    } else {
+        // Add subscription
+        const subscription = await Subscription.create({
+            subscriber,
+            channel,
+        });
+
+        return res.status(201).json(
+            new ApiResponse(
+                201,
+                {
+                    subscribed: true,
+                    subscription,
+                },
+                "Subscribed successfully"
+            )
+        );
+    }
+});
+
+export const getMySubscribers = asyncHandler(async (req, res) => {
+
+    const channelId = req.user._id;
+
+    const subscribers = await Subscription.find({
+        channel: channelId
+    })
+        .populate(
+            "subscriber",
+            "userName fullName avatar"
+        )
+        .sort({ createdAt: -1 });
+
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            {
+                subscribers,
+                count: subscribers.length
+            },
+            "Subscribers fetched successfully"
+        )
+    );
+});
+
+export const getMySubscriptions = asyncHandler(async (req, res) => {
+
+    const subscriptions = await Subscription.find({
+        subscriber: req.user._id
+    })
+        .populate(
+            "channel",
+            "_id userName fullName avatar"
+        )
+        .sort({ createdAt: -1 });
+
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            {
+                subscriptions,
+                count: subscriptions.length
+            },
+            "Subscriptions fetched successfully"
+        )
+    );
+});
+
+export const getChannelSubscribers = asyncHandler(async (req, res) => {
+
+    const { ownerId } = req.params;
+
+    const subscribers = await Subscription.find({
+        channel: ownerId
+    })
+        .populate(
+            "subscriber",
+            "userName fullName avatar"
+        )
+        .sort({ createdAt: -1 });
+
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            {
+                subscribers,
+                count: subscribers.length
+            },
+            "Subscribers fetched successfully"
+        )
+    );
+});
+
+export const getChannelSubscriptions = asyncHandler(async (req, res) => {
+
+    const { ownerId } = req.params;
+    const subscriptions = await Subscription.find({
+        subscriber: ownerId
+    })
+        .populate(
+            "channel",
+            "_id userName fullName avatar"
+        )
+        .sort({ createdAt: -1 });
+
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            {
+                subscriptions,
+                count: subscriptions.length
+            },
+            "Subscriptions fetched successfully"
+        )
+    );
 });

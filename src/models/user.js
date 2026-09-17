@@ -42,10 +42,10 @@ const userSchema = new Schema(
         ref: "Video",
       },
     ],
-    likedVideos:[
+    likedVideos: [
       {
         type: Schema.Types.ObjectId,
-        ref: "User",
+        ref: "Video",
       },
     ],
     refreshToken: {

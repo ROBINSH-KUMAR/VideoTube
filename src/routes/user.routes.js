@@ -27,6 +27,12 @@ import {
   //likes
   likeVideo,
   unlikeVideo,
+  //subscription
+  toggleSubscription,
+  getMySubscribers,
+  getChannelSubscribers,
+  getMySubscriptions,
+  getChannelSubscriptions
 } from "../controllers/user.controller.js";
 import { upload } from "../middlewares/multer.js";
 import { verifyJWT } from "../middlewares/authentication.middlewares.js";
@@ -100,7 +106,7 @@ router.route("/cover-image").patch(
 // ====================
 // Channel
 // ====================
-router.route("/channel/:username").get(
+router.route("/channel/:ownerId").get(
   verifyJWT,
   getUserChannelProfile
 );
@@ -172,7 +178,34 @@ router.route("/videos/:videoId/like")
   .post(verifyJWT, likeVideo)
   .delete(verifyJWT, unlikeVideo);
 
+// ====================
+// Subscription
+// ====================
+
+router
+    .route("/toggle/video/:videoId")
+    .post(verifyJWT, toggleSubscription);
+
+router
+    .route("/toggle/channel/:ownerId")
+    .post(verifyJWT, toggleSubscription);
+
+router
+    .route("/my-subscribers")
+    .get(verifyJWT, getMySubscribers);
+
+router
+    .route("/my-subscriptions")
+    .get(verifyJWT, getMySubscriptions);
 
 
+// Specific channel subscriptions
+router
+    .route("/channel/:ownerId/subscribers")
+    .get(verifyJWT, getChannelSubscribers);
 
-export default router;
+router
+    .route("/channel/:ownerId/subscriptions")
+    .get(verifyJWT, getChannelSubscriptions);
+
+    export default router;
