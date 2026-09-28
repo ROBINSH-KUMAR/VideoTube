@@ -25,14 +25,15 @@ import {
   removeFromWatchHistory,
   clearWatchHistory,
   //likes
-  likeVideo,
-  unlikeVideo,
+  likeAndUnlikeVideo,
   //subscription
   toggleSubscription,
   getMySubscribers,
   getChannelSubscribers,
   getMySubscriptions,
-  getChannelSubscriptions
+  getChannelSubscriptions,
+  // deleteVideo
+  deleteVideo,
 } from "../controllers/user.controller.js";
 import { upload } from "../middlewares/multer.js";
 import { verifyJWT } from "../middlewares/authentication.middlewares.js";
@@ -41,13 +42,12 @@ const router = Router();
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10,                  // maximum 10 attempts
+  max: 10, // maximum 10 attempts
   message: {
     success: false,
     message: "Too many login attempts. Please try again later.",
   },
 });
-
 
 // ====================
 // Authentication
@@ -76,48 +76,30 @@ router.route("/login").post(loginLimiter, loginUser);
 // Account && secured routes
 // ====================
 
-router.route("/change-password").patch(
-  verifyJWT,
-  changeCurrentPassword
-);  
+router.route("/change-password").patch(verifyJWT, changeCurrentPassword);
 
-router.route("/current-user").get(
-  verifyJWT,
-  getCurrentUser
-);
+router.route("/current-user").get(verifyJWT, getCurrentUser);
 
-router.route("/update-account").patch(
-  verifyJWT,
-  updateAccountDetails
-);
+router.route("/update-account").patch(verifyJWT, updateAccountDetails);
 
-router.route("/avatar").patch(
-  verifyJWT,
-  upload.single("avatar"),
-  updateUserAvatar
-);
+router
+  .route("/avatar")
+  .patch(verifyJWT, upload.single("avatar"), updateUserAvatar);
 
-router.route("/cover-image").patch(
-  verifyJWT,
-  upload.single("coverImage"),
-  updateUserCoverImage
-);
+router
+  .route("/cover-image")
+  .patch(verifyJWT, upload.single("coverImage"), updateUserCoverImage);
 
 // ====================
 // Channel
 // ====================
-router.route("/channel/:ownerId").get(
-  verifyJWT,
-  getUserChannelProfile
-);
+router.route("/channel/:ownerId").get(verifyJWT, getUserChannelProfile);
 
 // ====================
 // Videos
 // ====================
 
-router.route("/videos").get(
-  getAllVideos
-);
+router.route("/videos").get(getAllVideos);
 
 router.route("/publish-video").post(
   upload.fields([
@@ -134,78 +116,58 @@ router.route("/publish-video").post(
   publishVideo,
 );
 
-router.route("/videos/:videoId/publish").patch(
-  verifyJWT,
-  togglePublishStatus
-);
+router.route("/videos/:videoId/publish").patch(verifyJWT, togglePublishStatus);
 
-router.route("/videos/:videoId/view").patch(
-  verifyJWT,
-  incrementVideoViews
-);
-
+router.route("/videos/:videoId/view").patch(verifyJWT, incrementVideoViews);
 
 // ====================
 // Watch History
 // ====================
 
-router.route("/watch-history").get(
-  verifyJWT,
-  getWatchHistory
-);
+router.route("/watch-history").get(verifyJWT, getWatchHistory);
 
-router.route("/watch-history/:videoId").post(
-  verifyJWT,
-  addToWatchHistory
-);
+router.route("/watch-history/:videoId").post(verifyJWT, addToWatchHistory);
 
-router.route("/watch-history/:videoId").delete(
-  verifyJWT,
-  removeFromWatchHistory
-);
+router
+  .route("/watch-history/:videoId")
+  .delete(verifyJWT, removeFromWatchHistory);
 
-router.route("/watch-history").delete(
-  verifyJWT,
-  clearWatchHistory
-);
-
+router.route("/watch-history").delete(verifyJWT, clearWatchHistory);
 
 // ====================
 // Likes
 // ====================
 
-router.route("/videos/:videoId/like")
-  .post(verifyJWT, likeVideo)
-  .delete(verifyJWT, unlikeVideo);
+// router.route("/videos/:videoId/like")
+//   .post(verifyJWT, likeVideo)
+//   .delete(verifyJWT, unlikeVideo);
 
+router.post("/videos/:videoId/like", verifyJWT, likeAndUnlikeVideo);
 // ====================
 // Subscription
 // ====================
 
-router
-    .route("/toggle/video/:videoId")
-    .post(verifyJWT, toggleSubscription);
+router.route("/toggle/video/:videoId").post(verifyJWT, toggleSubscription);
 
-router
-    .route("/toggle/channel/:ownerId")
-    .post(verifyJWT, toggleSubscription);
+router.route("/toggle/channel/:ownerId").post(verifyJWT, toggleSubscription);
 
-router
-    .route("/my-subscribers")
-    .get(verifyJWT, getMySubscribers);
+router.route("/my-subscribers").get(verifyJWT, getMySubscribers);
 
-router
-    .route("/my-subscriptions")
-    .get(verifyJWT, getMySubscriptions);
-
+router.route("/my-subscriptions").get(verifyJWT, getMySubscriptions);
 
 // Specific channel subscriptions
 router
-    .route("/channel/:ownerId/subscribers")
-    .get(verifyJWT, getChannelSubscribers);
+  .route("/channel/:ownerId/subscribers")
+  .get(verifyJWT, getChannelSubscribers);
 
 router
-    .route("/channel/:ownerId/subscriptions")
-    .get(verifyJWT, getChannelSubscriptions);
+  .route("/channel/:ownerId/subscriptions")
+  .get(verifyJWT, getChannelSubscriptions);
 
-    export default router;
+// ====================
+// Video Deletion
+// ====================
+router.route("/videos/:videoId")
+.delete(verifyJWT, deleteVideo);
+
+export default router;

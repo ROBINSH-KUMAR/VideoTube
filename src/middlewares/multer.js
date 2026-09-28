@@ -1,16 +1,40 @@
+// import multer from "multer";
+// import crypto from "crypto"
+
+// const storage = multer.diskStorage({
+//   destination: function (req, file, cb) {
+//     cb(null, './public/temp')
+//   },
+//   filename: function (req, file, cb) {
+//     crypto.randomBytes(16, function (err, raw) {
+//       if (err) return cb(err)
+//       cb(null, file.originalname + '-' + raw.toString('hex'))
+//     })
+//   }
+// })
+
+// export const upload = multer({ storage: storage })
+
+
 import multer from "multer";
-import crypto from "crypto"
+import crypto from "crypto";
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, './public/temp')
+    cb(null, "./public/temp");
   },
-  filename: function (req, file, cb) {
-    crypto.randomBytes(16, function (err, raw) {
-      if (err) return cb(err)
-      cb(null, file.originalname + '-' + raw.toString('hex'))
-    })
-  }
-})
 
-export const upload = multer({ storage: storage })
+  filename: function (req, file, cb) {
+    crypto.randomBytes(16, (err, raw) => {
+      if (err) return cb(err);
+
+      const uniqueName = `${raw.toString("hex")}-${file.originalname}`;
+
+      cb(null, uniqueName);
+    });
+  },
+});
+
+export const upload = multer({
+  storage,
+});

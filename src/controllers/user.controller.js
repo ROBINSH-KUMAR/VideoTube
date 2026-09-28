@@ -4,10 +4,14 @@ import { ApiResponse } from "../utils/apiResponse.js";
 import { User } from "../models/user.js";
 import { Video } from "../models/video.js";
 import { Subscription } from "../models/subscription.model.js";
-import uploadOnCloudinary from "../utils/cloudinary.js";
+import {
+  uploadOnCloudinary,
+  deleteFromCloudinary,
+} from "../utils/cloudinary.js";
 import { options } from "../constants.js";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
+import uploadLargeVideoOnCloudinary from "../utils/uploadLargeVideoOnCloudinary.js";
 
 const generateAccessAndRefreshToken = async (userId) => {
   try {
@@ -139,7 +143,8 @@ export const logoutUser = asyncHandler(async (req, res) => {
 });
 
 export const refreshAccessToken = asyncHandler(async (req, res) => {
-  const incomingRefreshToken = req.cookie?.refreshToken || req.body?.refreshToken;
+  const incomingRefreshToken =
+    req.cookie?.refreshToken || req.body?.refreshToken;
 
   if (!incomingRefreshToken) {
     throw new ApiError(401, "Unauthorized request");
@@ -215,6 +220,8 @@ export const publishVideo = asyncHandler(async (req, res) => {
   const video = await Video.create({
     videoFile: videoFile.url,
     thumbnail: thumbnail.url,
+    videoPublicId: videoFile.public_id,
+    thumbnailPublicId: thumbnail.public_id,
     title,
     description,
     duration: videoFile.duration,
@@ -407,12 +414,11 @@ export const updateUserCoverImage = asyncHandler(async (req, res) => {
 // Channel Controllers
 
 export const getUserChannelProfile = asyncHandler(async (req, res) => {
- const { ownerId } = req.params;
+  const { ownerId } = req.params;
 
-    if (!ownerId) {
-        throw new ApiError(400, "Owner ID is missing");
-    }
-
+  if (!ownerId) {
+    throw new ApiError(400, "Owner ID is missing");
+  }
 
   const channel = await User.aggregate([
     {
@@ -624,7 +630,111 @@ export const clearWatchHistory = asyncHandler(async (req, res) => {
 
 // Like/Unlike Video Controllers
 
-export const likeVideo = asyncHandler(async (req, res) => {
+// export const likeVideo = asyncHandler(async (req, res) => {
+//   const { videoId } = req.params;
+
+//   const session = await mongoose.startSession();
+
+//   try {
+//     session.startTransaction();
+
+//     const video = await Video.findById(videoId).session(session);
+
+//     if (!video) {
+//       throw new ApiError(404, "Video not found");
+//     }
+
+//     const user = await User.findById(req.user._id).session(session);
+
+//     if (!user) {
+//       throw new ApiError(404, "User not found");
+//     }
+
+//     const alreadyLiked = user.likedVideos.some(
+//       (id) => id.toString() === videoId,
+//     );
+
+//     if (alreadyLiked) {
+//       throw new ApiError(400, "Video already liked");
+//     }
+
+//     user.likedVideos.push(video._id);
+//     video.likes += 1;
+
+//     await user.save({ session });
+//     await video.save({ session });
+
+//     await session.commitTransaction();
+
+//     return res.status(200).json(
+//       new ApiResponse(
+//         200,
+//         {
+//           likes: video.likes,
+//           isLiked: true,
+//         },
+//         "Video liked successfully",
+//       ),
+//     );
+//   } catch (error) {
+//     await session.abortTransaction();
+//     throw error;
+//   } finally {
+//     await session.endSession();
+//   }
+// });
+
+// export const unlikeVideo = asyncHandler(async (req, res) => {
+//   const { videoId } = req.params;
+
+//   const session = await mongoose.startSession();
+
+//   try {
+//     session.startTransaction();
+
+//     const video = await Video.findById(videoId).session(session);
+
+//     if (!video) {
+//       throw new ApiError(404, "Video not found");
+//     }
+
+//     const user = await User.findById(req.user._id).session(session);
+
+//     const alreadyLiked = user.likedVideos.some(
+//       (id) => id.toString() === videoId,
+//     );
+
+//     if (!alreadyLiked) {
+//       throw new ApiError(400, "Video is not liked");
+//     }
+
+//     user.likedVideos.pull(video._id);
+//     await user.save({ session });
+
+//     video.likes = Math.max(video.likes - 1, 0);
+//     await video.save({ session });
+
+//     await session.commitTransaction();
+
+//     return res.status(200).json(
+//       new ApiResponse(
+//         200,
+//         {
+//           likes: video.likes,
+//           isLiked: false,
+//         },
+//         "Video unliked successfully",
+//       ),
+//     );
+//   } catch (error) {
+//     await session.abortTransaction();
+//     throw error;
+//   } finally {
+//     await session.endSession();
+//   }
+// });
+
+export const likeAndUnlikeVideo = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
 
   const session = await mongoose.startSession();
@@ -632,11 +742,19 @@ export const likeVideo = asyncHandler(async (req, res) => {
   try {
     session.startTransaction();
 
+    // =========================
+    // FIND VIDEO
+    // =========================
+
     const video = await Video.findById(videoId).session(session);
 
     if (!video) {
       throw new ApiError(404, "Video not found");
     }
+
+    // =========================
+    // FIND USER
+    // =========================
 
     const user = await User.findById(req.user._id).session(session);
 
@@ -644,271 +762,291 @@ export const likeVideo = asyncHandler(async (req, res) => {
       throw new ApiError(404, "User not found");
     }
 
+    // =========================
+    // CHECK CURRENT LIKE STATUS
+    // =========================
+
     const alreadyLiked = user.likedVideos.some(
       (id) => id.toString() === videoId,
     );
 
+    // =========================
+    // TOGGLE LIKE / UNLIKE
+    // =========================
+
     if (alreadyLiked) {
-      throw new ApiError(400, "Video already liked");
+      // -------------------------
+      // UNLIKE
+      // -------------------------
+
+      user.likedVideos.pull(video._id);
+
+      video.likes = Math.max((video.likes || 0) - 1, 0);
+    } else {
+      // -------------------------
+      // LIKE
+      // -------------------------
+
+      user.likedVideos.push(video._id);
+
+      video.likes = (video.likes || 0) + 1;
     }
 
-    user.likedVideos.push(video._id);
-    video.likes += 1;
+    // =========================
+    // SAVE BOTH
+    // =========================
 
     await user.save({ session });
     await video.save({ session });
 
+    // =========================
+    // COMMIT TRANSACTION
+    // =========================
+
     await session.commitTransaction();
+
+    // =========================
+    // RESPONSE
+    // =========================
 
     return res.status(200).json(
       new ApiResponse(
         200,
         {
           likes: video.likes,
-          isLiked: true,
+          isLiked: !alreadyLiked,
         },
-        "Video liked successfully",
+        alreadyLiked
+          ? "Video unliked successfully"
+          : "Video liked successfully",
       ),
     );
   } catch (error) {
-    await session.abortTransaction();
+    // Only abort if transaction is still active
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+
     throw error;
   } finally {
     await session.endSession();
   }
 });
+//Subcription Controllers
 
-export const unlikeVideo = asyncHandler(async (req, res) => {
-  const { videoId } = req.params;
+export const toggleSubscription = asyncHandler(async (req, res) => {
+  const subscriber = req.user._id;
+  const { videoId, ownerId } = req.params;
 
-  const session = await mongoose.startSession();
+  let channel;
 
-  try {
-    session.startTransaction();
+  // If video ID is provided
+  if (videoId) {
+    if (!mongoose.isValidObjectId(videoId)) {
+      throw new ApiError(400, "Invalid video ID");
+    }
 
-    const video = await Video.findById(videoId).session(session);
+    const video = await Video.findById(videoId).select("owner");
 
     if (!video) {
       throw new ApiError(404, "Video not found");
     }
 
-    const user = await User.findById(req.user._id).session(session);
+    channel = video.owner;
+  }
 
-    const alreadyLiked = user.likedVideos.some(
-      (id) => id.toString() === videoId,
-    );
-
-    if (!alreadyLiked) {
-      throw new ApiError(400, "Video is not liked");
+  // Otherwise use owner ID
+  else if (ownerId) {
+    if (!mongoose.isValidObjectId(ownerId)) {
+      throw new ApiError(400, "Invalid owner ID");
     }
 
-    user.likedVideos.pull(video._id);
-    await user.save({ session });
+    channel = ownerId;
+  } else {
+    throw new ApiError(400, "Video ID or Owner ID is required");
+  }
 
-    video.likes = Math.max(video.likes - 1, 0);
-    await video.save({ session });
+  // Cannot subscribe to yourself
+  if (subscriber.toString() === channel.toString()) {
+    throw new ApiError(400, "You cannot subscribe to your own channel");
+  }
 
-    await session.commitTransaction();
+  // Find subscription
+  const existingSubscription = await Subscription.findOne({
+    subscriber,
+    channel,
+  });
+
+  if (existingSubscription) {
+    // Delete subscription
+    await Subscription.findByIdAndDelete(existingSubscription._id);
 
     return res.status(200).json(
       new ApiResponse(
         200,
         {
-          likes: video.likes,
-          isLiked: false,
+          subscribed: false,
         },
-        "Video unliked successfully",
+        "Unsubscribed successfully",
       ),
     );
+  } else {
+    // Add subscription
+    const subscription = await Subscription.create({
+      subscriber,
+      channel,
+    });
+
+    return res.status(201).json(
+      new ApiResponse(
+        201,
+        {
+          subscribed: true,
+          subscription,
+        },
+        "Subscribed successfully",
+      ),
+    );
+  }
+});
+
+export const getMySubscribers = asyncHandler(async (req, res) => {
+  const channelId = req.user._id;
+
+  const subscribers = await Subscription.find({
+    channel: channelId,
+  })
+    .populate("subscriber", "userName fullName avatar")
+    .sort({ createdAt: -1 });
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        subscribers,
+        count: subscribers.length,
+      },
+      "Subscribers fetched successfully",
+    ),
+  );
+});
+
+export const getMySubscriptions = asyncHandler(async (req, res) => {
+  const subscriptions = await Subscription.find({
+    subscriber: req.user._id,
+  })
+    .populate("channel", "_id userName fullName avatar")
+    .sort({ createdAt: -1 });
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        subscriptions,
+        count: subscriptions.length,
+      },
+      "Subscriptions fetched successfully",
+    ),
+  );
+});
+
+export const getChannelSubscribers = asyncHandler(async (req, res) => {
+  const { ownerId } = req.params;
+
+  const subscribers = await Subscription.find({
+    channel: ownerId,
+  })
+    .populate("subscriber", "userName fullName avatar")
+    .sort({ createdAt: -1 });
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        subscribers,
+        count: subscribers.length,
+      },
+      "Subscribers fetched successfully",
+    ),
+  );
+});
+
+export const getChannelSubscriptions = asyncHandler(async (req, res) => {
+  const { ownerId } = req.params;
+  const subscriptions = await Subscription.find({
+    subscriber: ownerId,
+  })
+    .populate("channel", "_id userName fullName avatar")
+    .sort({ createdAt: -1 });
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        subscriptions,
+        count: subscriptions.length,
+      },
+      "Subscriptions fetched successfully",
+    ),
+  );
+});
+
+export const deleteVideo = asyncHandler(async (req, res) => {
+  const { videoId } = req.params;
+  if (!mongoose.isValidObjectId(videoId)) {
+    throw new ApiError(400, "Invalid video ID");
+  }
+  const video = await Video.findById(videoId);
+
+  if (!video) {
+    throw new ApiError(404, "Video not found");
+  }
+
+  if (video.owner.toString() !== req.user._id.toString()) {
+    throw new ApiError(403, "You are not the owner");
+  }
+
+  const deleteResult = await deleteFromCloudinary(video.videoPublicId, "video");
+
+  if (deleteResult.result !== "ok") {
+    throw new ApiError(500, "Failed to delete video from cloudinary");
+  }
+  const deleteThumbnailResult = await deleteFromCloudinary(
+    video.thumbnailPublicId,
+    "image",
+  );
+
+  if (deleteThumbnailResult.result !== "ok") {
+    throw new ApiError(500, "Failed to delete thumbnail from cloudinary");
+  }
+  const session = await mongoose.startSession();
+
+  try {
+    session.startTransaction();
+
+    await Video.deleteOne({ _id: videoId }, { session });
+
+    await User.updateMany(
+      {
+        $or: [{ likedVideos: videoId }, { watchHistory: videoId }],
+      },
+      {
+        $pull: {
+          likedVideos: videoId,
+          watchHistory: videoId,
+        },
+      },
+      { session },
+    );
+
+    await session.commitTransaction();
+    return res
+      .status(200)
+      .json(new ApiResponse(200, {}, "Video deleted successfully"));
   } catch (error) {
     await session.abortTransaction();
     throw error;
   } finally {
     await session.endSession();
   }
-});
-
-//Subcription Controllers
-
-export const toggleSubscription = asyncHandler(async (req, res) => {
-    const subscriber = req.user._id;
-    const { videoId, ownerId } = req.params;
-
-    let channel;
-
-    // If video ID is provided
-    if (videoId) {
-        if (!mongoose.isValidObjectId(videoId)) {
-            throw new ApiError(400, "Invalid video ID");
-        }
-
-        const video = await Video.findById(videoId).select("owner");
-
-        if (!video) {
-            throw new ApiError(404, "Video not found");
-        }
-
-        channel = video.owner;
-    }
-
-    // Otherwise use owner ID
-    else if (ownerId) {
-        if (!mongoose.isValidObjectId(ownerId)) {
-            throw new ApiError(400, "Invalid owner ID");
-        }
-
-        channel = ownerId;
-    }
-
-    else {
-        throw new ApiError(
-            400,
-            "Video ID or Owner ID is required"
-        );
-    }
-
-    // Cannot subscribe to yourself
-    if (subscriber.toString() === channel.toString()) {
-        throw new ApiError(
-            400,
-            "You cannot subscribe to your own channel"
-        );
-    }
-
-    // Find subscription
-    const existingSubscription = await Subscription.findOne({
-        subscriber,
-        channel,
-    });
-
-    if (existingSubscription) {
-        // Delete subscription
-        await Subscription.findByIdAndDelete(
-            existingSubscription._id
-        );
-
-        return res.status(200).json(
-            new ApiResponse(
-                200,
-                {
-                    subscribed: false,
-                },
-                "Unsubscribed successfully"
-            )
-        );
-    } else {
-        // Add subscription
-        const subscription = await Subscription.create({
-            subscriber,
-            channel,
-        });
-
-        return res.status(201).json(
-            new ApiResponse(
-                201,
-                {
-                    subscribed: true,
-                    subscription,
-                },
-                "Subscribed successfully"
-            )
-        );
-    }
-});
-
-export const getMySubscribers = asyncHandler(async (req, res) => {
-
-    const channelId = req.user._id;
-
-    const subscribers = await Subscription.find({
-        channel: channelId
-    })
-        .populate(
-            "subscriber",
-            "userName fullName avatar"
-        )
-        .sort({ createdAt: -1 });
-
-    return res.status(200).json(
-        new ApiResponse(
-            200,
-            {
-                subscribers,
-                count: subscribers.length
-            },
-            "Subscribers fetched successfully"
-        )
-    );
-});
-
-export const getMySubscriptions = asyncHandler(async (req, res) => {
-
-    const subscriptions = await Subscription.find({
-        subscriber: req.user._id
-    })
-        .populate(
-            "channel",
-            "_id userName fullName avatar"
-        )
-        .sort({ createdAt: -1 });
-
-    return res.status(200).json(
-        new ApiResponse(
-            200,
-            {
-                subscriptions,
-                count: subscriptions.length
-            },
-            "Subscriptions fetched successfully"
-        )
-    );
-});
-
-export const getChannelSubscribers = asyncHandler(async (req, res) => {
-
-    const { ownerId } = req.params;
-
-    const subscribers = await Subscription.find({
-        channel: ownerId
-    })
-        .populate(
-            "subscriber",
-            "userName fullName avatar"
-        )
-        .sort({ createdAt: -1 });
-
-    return res.status(200).json(
-        new ApiResponse(
-            200,
-            {
-                subscribers,
-                count: subscribers.length
-            },
-            "Subscribers fetched successfully"
-        )
-    );
-});
-
-export const getChannelSubscriptions = asyncHandler(async (req, res) => {
-
-    const { ownerId } = req.params;
-    const subscriptions = await Subscription.find({
-        subscriber: ownerId
-    })
-        .populate(
-            "channel",
-            "_id userName fullName avatar"
-        )
-        .sort({ createdAt: -1 });
-
-    return res.status(200).json(
-        new ApiResponse(
-            200,
-            {
-                subscriptions,
-                count: subscriptions.length
-            },
-            "Subscriptions fetched successfully"
-        )
-    );
 });
