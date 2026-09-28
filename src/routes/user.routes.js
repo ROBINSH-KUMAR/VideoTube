@@ -34,6 +34,8 @@ import {
   getChannelSubscriptions,
   // deleteVideo
   deleteVideo,
+  // search
+  searchVideos
 } from "../controllers/user.controller.js";
 import { upload } from "../middlewares/multer.js";
 import { verifyJWT } from "../middlewares/authentication.middlewares.js";
@@ -169,5 +171,10 @@ router
 // ====================
 router.route("/videos/:videoId")
 .delete(verifyJWT, deleteVideo);
+
+// ====================
+// Search
+// ====================
+router.route("/search").get(verifyJWT, searchVideos);
 
 export default router;

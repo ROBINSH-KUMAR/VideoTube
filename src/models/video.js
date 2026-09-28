@@ -6,10 +6,11 @@ const videoSchema = Schema(
     videoFile: {
       type: String, //cloudinary url
       requierd: true,
+      
     },
     videoPublicId: {
       type: String,
-      required: true,
+      
     },
     thumbnail: {
       type: String, //cloudinary url
@@ -17,11 +18,13 @@ const videoSchema = Schema(
     },
     thumbnailPublicId: {
       type: String,
-      required: true,
+      
     },
     title: {
       type: String,
       required: true,
+      trim: true,
+      index: "text",
     },
     description: {
       type: String,

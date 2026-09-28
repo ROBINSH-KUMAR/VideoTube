@@ -1050,3 +1050,23 @@ export const deleteVideo = asyncHandler(async (req, res) => {
     await session.endSession();
   }
 });
+
+export const searchVideos = asyncHandler(async (req, res) => {
+  const { query } = req.query;
+
+  if (!query?.trim()) {
+    throw new ApiError(400, "Search query is required");
+  }
+
+  const videos = await Video.find({
+    $text: {
+      $search: query.trim(),
+    },
+  })
+    .populate("owner", "userName fullName avatar")
+    .sort({ score: { $meta: "textScore" } });
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, videos, "Videos fetched successfully"));
+});
