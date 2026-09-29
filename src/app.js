@@ -8,10 +8,10 @@ dotenv.config();
 const app = express();
 
 app.use(helmet());
-app.use((req, res, next) => {
-  console.log("REQUEST REACHED EXPRESS:", req.method, req.url);
-  next();
-});
+// app.use((req, res, next) => {
+//   console.log("REQUEST REACHED EXPRESS:", req.method, req.url);
+//   next();
+// });
 app.use(
   cors({
     origin: process.env.CORS_ORIGIN,

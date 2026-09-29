@@ -5,63 +5,15 @@ import {app} from "./app.js"
 import connectDB from "./db/index.js";
 
 
-let dbConnected = false;
-
-const handler = async (req, res) => {
-  try {
-    if (!dbConnected) {
-      await connectDB();
-      dbConnected = true;
-    }
-
-    return app(req, res);
-  } catch (error) {
-    console.error("Server error:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-};
-
-export default handler;
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/*
-//localhost:8000 
 connectDB().then(() => {
- 
-    app.on("err", () => {
-      console.log("ERROR", err);
-      throw error;
-    });
+
+    // app.on("err", (err) => {
+    //   console.log("ERROR", err);
+    //   throw error;
+    // });
 
     app.listen(process.env.PORT || 8000, () => {
       console.log(`App is running on http://localhost:${process.env.PORT}`);
