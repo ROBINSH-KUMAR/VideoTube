@@ -75,7 +75,8 @@ web_modules/
 .env.production
 
 # Temporary uploaded files
-public/temp/
+public/temp/*
+!public/temp/.gitkeep
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
