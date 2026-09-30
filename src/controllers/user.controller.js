@@ -268,11 +268,66 @@ export const getAllVideos = asyncHandler(async (req, res) => {
 
   const requestedLimit = Number(req.query.limit) || 40;
   const limit = Math.min(Math.max(requestedLimit, 1), 40);
-  const videos = await Video.find({ isPublished: true })
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(limit)
-    .populate("owner", "fullName userName avatar");
+  // const videos = await Video.find({ isPublished: true })
+  //   .sort({ createdAt: -1 })
+  //   .skip(skip)
+  //   .limit(limit)
+  //   .populate("owner", "fullName userName avatar");
+
+  const videos = await Video.aggregate([
+  {
+    $match: {
+      isPublished: true,
+    },
+  },
+
+  // Randomize videos
+  {
+    $sample: {
+      size: limit,
+    },
+  },
+
+  // Get owner details
+  {
+    $lookup: {
+      from: "users",
+      localField: "owner",
+      foreignField: "_id",
+      as: "owner",
+    },
+  },
+
+  // Convert owner array to object
+  {
+    $unwind: "$owner",
+  },
+
+  // Only return the owner fields you currently expose
+  {
+    $project: {
+      "owner._id": 1,
+      "owner.userName": 1,
+      "owner.fullName": 1,
+      "owner.avatar": 1,
+
+      _id: 1,
+      videoFile: 1,
+      videoPublicId: 1,
+      thumbnail: 1,
+      thumbnailPublicId: 1,
+      title: 1,
+      description: 1,
+      duration: 1,
+      views: 1,
+      likes: 1,
+      isPublished: 1,
+      createdAt: 1,
+      updatedAt: 1,
+      __v: 1,
+    },
+  },
+]);
   return res
     .status(200)
     .json(
