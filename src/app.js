@@ -33,7 +33,7 @@ app.use(cookieParser());
 //   },
 // });
 
-//app.use("/api/v1", apiLimiter);
+// app.use("/api", apiLimiter);
 
 //routes import
 import userRouter from "./routes/user.routes.js";

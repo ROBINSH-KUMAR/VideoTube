@@ -95,7 +95,7 @@ router
 // ====================
 // Channel
 // ====================
-router.route("/channel/:ownerId").get(verifyJWT, getUserChannelProfile);
+router.route("/channel/:ownerId").get( getUserChannelProfile);
 
 // ====================
 // Videos
@@ -120,7 +120,7 @@ router.route("/publish-video").post(
 
 router.route("/videos/:videoId/publish").patch(verifyJWT, togglePublishStatus);
 
-router.route("/videos/:videoId/view").patch(verifyJWT, incrementVideoViews);
+router.route("/videos/:videoId/view").patch( incrementVideoViews);
 
 // ====================
 // Watch History

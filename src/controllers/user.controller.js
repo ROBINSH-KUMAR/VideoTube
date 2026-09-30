@@ -328,9 +328,7 @@ export const getAllVideos = asyncHandler(async (req, res) => {
     },
   },
 ]);
-console.log(
-  "RANDOM ORDER:",
-  videos.map((video) => video.title))
+
   return res
     .status(200)
     .json(
